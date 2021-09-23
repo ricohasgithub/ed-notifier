@@ -81,7 +81,7 @@ if cache != {}:
                     "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": f"📒 *Category:*\n{full_category}"
+                            "text": f"🗂️ *Category:*\n{full_category}"
                         },
                         {
                             "type": "mrkdwn",
