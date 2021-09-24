@@ -9,7 +9,7 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 
 ED_COURSE_ID = 0000
 ED_AUTH_TOKEN = "YOUR_ED_AUTH_TOKEN_HERE"
-SLACK_WEBHOOK_URL = "YOUR_SLACK_BOT_INCOMING_WEBHOOK_URL_HERE"
+SLACK_WEBHOOK_URLS = ["YOUR_SLACK_BOT_INCOMING_WEBHOOK_URL(s)_HERE"]
 JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
 
 # ==================================== #
@@ -106,6 +106,7 @@ if cache != {}:
             ]
         }
 
-        r = requests.post(SLACK_WEBHOOK_URL, json=slack_request_json)
-        if(r.status_code != 200):
-            print(f"Received status code {r.status_code} when trying to post notification for Post #{thread['number']} (ID {thread['id']}).")
+        for slack_webhook_url in SLACK_WEBHOOK_URLS:
+            r = requests.post(slack_webhook_url, json=slack_request_json)
+            if(r.status_code != 200):
+                print(f"Got status {r.status_code} when posting message for Post #{thread['number']}/ID {thread['id']} to Slack Webhook URL {slack_webhook_url}.")
