@@ -7,23 +7,20 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 
 
 # ==================================== #
-# =========== JSON CONFIG ============ #
-# ==================================== #
-
-CACHE_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
-
-# ==================================== #
 # ========== REQUEST CONFIG ========== #
 # ==================================== #
 
 SORT = "new"
 LIMIT = "20" # must be <= 100
 
+
 # Arg parser
 parser = argparse.ArgumentParser(description="Sends notifications for new Ed posts to Slack channel(s)")
 parser.add_argument('config', nargs=1, type=str, help='path to config json containing Ed + Slack config')
+parser.add_argument('cache', nargs=1, type=str, help='path to cache json for Ed posts')
 args = parser.parse_args()
 
+CACHE_JSON_FILEPATH = str(Path(args.cache[0]).absolute())
 CONFIG_JSON_FILEPATH = str(Path(args.config[0]).absolute())
 if not Path(CONFIG_JSON_FILEPATH).is_file():
     print(f"ERROR: passed config json file '{args.config[0]}' not found")
@@ -53,7 +50,7 @@ threads = response.json()['threads']
 new_threads = [thread for thread in threads if thread['id'] not in cached_thread_ids]
 
 for thread in new_threads:
-    cached_thread_ids.add(thread['id'])
+    cached_thread_ids.add(f"{ED_COURSE_ID}/{thread['id']}")
 
 # Write updated cache data to cache json
 new_cache = {
