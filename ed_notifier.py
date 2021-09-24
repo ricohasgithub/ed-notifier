@@ -1,3 +1,5 @@
+import argparse
+import sys
 import requests
 import json
 from pathlib import Path
@@ -8,7 +10,6 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 # =========== JSON CONFIG ============ #
 # ==================================== #
 
-CONFIG_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "config.json")
 CACHE_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
 
 # ==================================== #
@@ -18,6 +19,15 @@ CACHE_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
 SORT = "new"
 LIMIT = "20" # must be <= 100
 
+# Arg parser
+parser = argparse.ArgumentParser(description="Sends notifications for new Ed posts to Slack channel(s)")
+parser.add_argument('config', nargs=1, type=str, help='path to config json containing Ed + Slack config')
+args = parser.parse_args()
+
+CONFIG_JSON_FILEPATH = str(Path(args.config[0]).absolute())
+if not Path(CONFIG_JSON_FILEPATH).is_file():
+    print(f"ERROR: passed config json file '{args.config[0]}' not found")
+    sys.exit(1)
 
 # Read in config json data
 with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
