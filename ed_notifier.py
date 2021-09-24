@@ -3,14 +3,13 @@ import json
 from pathlib import Path
 SCRIPT_DIR = str(Path(__file__).parent.absolute())
 
+
 # ==================================== #
-# ========= ED/SLACK CONFIG ========== #
+# =========== JSON CONFIG ============ #
 # ==================================== #
 
-ED_COURSE_ID = 0000
-ED_AUTH_TOKEN = "YOUR_ED_AUTH_TOKEN_HERE"
-SLACK_WEBHOOK_URLS = ["YOUR_SLACK_BOT_INCOMING_WEBHOOK_URL(s)_HERE"]
-JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
+CONFIG_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "config.json")
+CACHE_JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
 
 # ==================================== #
 # ========== REQUEST CONFIG ========== #
@@ -18,22 +17,27 @@ JSON_FILEPATH = str(Path(SCRIPT_DIR) / "cache.json")
 
 SORT = "new"
 LIMIT = "20" # must be <= 100
-REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads?sort={SORT}&limit={LIMIT}"
-REQUEST_HEADERS = {'x-token': ED_AUTH_TOKEN}
 
-# ==================================== #
-# ============ END CONFIG ============ #
-# ==================================== #
+
+# Read in config json data
+with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
+    config = json.load(json_file)
+    ED_COURSE_ID = config['ed_course_id']
+    ED_AUTH_TOKEN = config['ed_auth_token']
+    SLACK_WEBHOOK_URLS = config['slack_webhook_urls']
 
 # Read in cached data
 try:
-    with open(JSON_FILEPATH, 'r') as json_file:
+    with open(CACHE_JSON_FILEPATH, 'r') as json_file:
         cache = json.load(json_file)
         cached_thread_ids = set(cache['thread_ids'])
 except:
     cache = {}
     cached_thread_ids = set()
 
+# Read data from Ed
+REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads?sort={SORT}&limit={LIMIT}"
+REQUEST_HEADERS = {'x-token': ED_AUTH_TOKEN}
 response = requests.get(REQUEST_URL, headers=REQUEST_HEADERS)
 threads = response.json()['threads']
 new_threads = [thread for thread in threads if thread['id'] not in cached_thread_ids]
@@ -45,7 +49,7 @@ for thread in new_threads:
 new_cache = {
     'thread_ids': sorted(cached_thread_ids)
 }
-with open(JSON_FILEPATH, 'w') as json_file:
+with open(CACHE_JSON_FILEPATH, 'w') as json_file:
     json.dump(new_cache, json_file)
 
 # Send slack notifs
