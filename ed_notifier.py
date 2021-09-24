@@ -11,7 +11,7 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 # ==================================== #
 
 SORT = "new"
-LIMIT = "20" # must be <= 100
+LIMIT = "50" # must be <= 100
 
 
 # Arg parser
