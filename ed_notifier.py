@@ -33,12 +33,16 @@ with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
     ED_AUTH_TOKEN = config['ed_auth_token']
     SLACK_WEBHOOK_URLS = config['slack_webhook_urls']
 
+# Combine course ID and thread ID to get unique ID
+def get_unique_id(thread):
+    return f"{ED_COURSE_ID}/{thread['id']}"
+
 # Read in cached data
 try:
     with open(CACHE_JSON_FILEPATH, 'r') as json_file:
         cache = json.load(json_file)
         cached_thread_ids = set(cache['thread_ids'])
-except:
+except FileNotFoundError:
     cache = {}
     cached_thread_ids = set()
 
@@ -47,10 +51,10 @@ REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads?sort={S
 REQUEST_HEADERS = {'x-token': ED_AUTH_TOKEN}
 response = requests.get(REQUEST_URL, headers=REQUEST_HEADERS)
 threads = response.json()['threads']
-new_threads = [thread for thread in threads if thread['id'] not in cached_thread_ids]
+new_threads = [thread for thread in threads if get_unique_id(thread) not in cached_thread_ids]
 
 for thread in new_threads:
-    cached_thread_ids.add(f"{ED_COURSE_ID}/{thread['id']}")
+    cached_thread_ids.add(get_unique_id(thread))
 
 # Write updated cache data to cache json
 new_cache = {
@@ -60,64 +64,67 @@ with open(CACHE_JSON_FILEPATH, 'w') as json_file:
     json.dump(new_cache, json_file)
 
 # Send slack notifs
-if cache != {}:
-    for thread in new_threads:
-        formatted_title = f"(#{thread['number']}) {thread['title']}"
-        author = "Anonymous" if thread['is_anonymous'] else thread['user']['name']
-        post_text = thread['document'].strip()
-        full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
-        thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
+if len(cache) == 0:
+    print("Cache file was empty: successfully populated cache. No Slack notifications sent.")
+    sys.exit(0)
 
-        slack_request_json = {
-            "text": formatted_title + ": " + post_text,
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": formatted_title,
-                        "emoji": True
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "plain_text",
-                        "text": post_text,
-                        "emoji": True
-                    }
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"🗂️ *Category:*\n{full_category}"
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"👤 *Posted by:*\n{author}"
-                        }
-                    ]
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🔗 Open in Ed",
-                                "emoji": True
-                            },
-                            "url": thread_url
-                        }
-                    ]
+for thread in new_threads:
+    formatted_title = f"(#{thread['number']}) {thread['title']}"
+    author = "Anonymous" if thread['is_anonymous'] else thread['user']['name']
+    post_text = thread['document'].strip()
+    full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
+    thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
+
+    slack_request_json = {
+        "text": formatted_title + ": " + post_text,
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": formatted_title,
+                    "emoji": True
                 }
-            ]
-        }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "plain_text",
+                    "text": post_text,
+                    "emoji": True
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"🗂️ *Category:*\n{full_category}"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"👤 *Posted by:*\n{author}"
+                    }
+                ]
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🔗 Open in Ed",
+                            "emoji": True
+                        },
+                        "url": thread_url
+                    }
+                ]
+            }
+        ]
+    }
 
-        for slack_webhook_url in SLACK_WEBHOOK_URLS:
-            r = requests.post(slack_webhook_url, json=slack_request_json)
-            if(r.status_code != 200):
-                print(f"Got status {r.status_code} when posting message for Post #{thread['number']}/ID {thread['id']} to Slack Webhook URL {slack_webhook_url}.")
+    for slack_webhook_url in SLACK_WEBHOOK_URLS:
+        r = requests.post(slack_webhook_url, json=slack_request_json)
+        if(r.status_code != 200):
+            print(f"Got status {r.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Webhook URL {slack_webhook_url}")
