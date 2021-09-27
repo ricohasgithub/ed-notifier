@@ -53,10 +53,14 @@ response = requests.get(REQUEST_URL, headers=REQUEST_HEADERS)
 threads = response.json()['threads']
 new_threads = [thread for thread in threads if get_unique_id(thread) not in cached_thread_ids]
 
+# Sort new threads by thread number
+new_threads.sort(key=lambda thread: thread['number'])
+
+# Add new threads to cache set
 for thread in new_threads:
     cached_thread_ids.add(get_unique_id(thread))
 
-# Write updated cache data to cache json
+# Write updated cache set to cache json file
 new_cache = {
     'thread_ids': sorted(cached_thread_ids)
 }
