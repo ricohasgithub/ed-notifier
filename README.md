@@ -19,7 +19,7 @@ Installation:
 }
 ```
   - `ed_course_id`: replace `0000` with your four-digit course code in Ed. This is found by navigating to your Ed course in a web browser and looking at the URL, which should look like `https://edstem.org/us/courses/####/...`, where `####` is the four-digit course code.
-  - `ed_auth_token: this authentication token is obtained by analyzing your network traffic when connected to Ed. Look for an HTTPS request to `https://us.edstem.org/api/courses/####/threads...`, and expand the *request body* (NOT response body) information. Look for the `x-token` property. This is your Ed authentication token.
+  - `ed_auth_token`: this authentication token is obtained by analyzing your network traffic when connected to Ed. Look for an HTTPS request to `https://us.edstem.org/api/courses/####/threads...`, and expand the *request body* (NOT response body) information. Look for the `x-token` property. This is your Ed authentication token.
   - `slack_auth_token`: add your Slack Bot's OAuth 2.0 v2 token here. If you're using it through Raj, he will do this for you.
   - `channel_ids`: an array of Slack channel IDs to which messages will be posted. The bot must be added to the channels specified for this to work.
 3) To run the script, use `/usr/bin/python3 ed_notifier.py config.json cache.json`
