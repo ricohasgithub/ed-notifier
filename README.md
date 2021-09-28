@@ -12,14 +12,16 @@ Installation:
 {
     "ed_course_id": "0000",
     "ed_auth_token": "YOUR_ED_AUTH_TOKEN_HERE",
-    "slack_webhook_urls": [
-        "YOUR_SLACK_BOT_INCOMING_WEBHOOK_URL(s)_HERE"
+    "slack_auth_token": "YOUR_SLACK_BOT_AUTH_TOKEN_HERE",
+    "channel_ids": [
+        "YOUR_SLACK_CHANNEL_IDS_HERE"
     ]
 }
 ```
   - `ed_course_id`: replace `0000` with your four-digit course code in Ed. This is found by navigating to your Ed course in a web browser and looking at the URL, which should look like `https://edstem.org/us/courses/####/...`, where `####` is the four-digit course code.
   - `ed_auth_token: this authentication token is obtained by analyzing your network traffic when connected to Ed. Look for an HTTPS request to `https://us.edstem.org/api/courses/####/threads...`, and expand the *request body* (NOT response body) information. Look for the `x-token` property. This is your Ed authentication token.
-  - `slack_webhook_urls`: add your Slack channels' Incoming Webhook URLs here, so that this script can send a message to your Slack channel. See [this Slack documentation](https://api.slack.com/messaging/webhooks#create_a_webhook) for more information, or install [this Slack App](https://api.slack.com/best-practices/blueprints/per-channel-webhooks) to generate a webhook for you.
+  - `slack_auth_token`: add your Slack Bot's OAuth 2.0 v2 token here. If you're using it through Raj, he will do this for you.
+  - `channel_ids`: an array of Slack channel IDs to which messages will be posted. The bot must be added to the channels specified for this to work.
 3) To run the script, use `/usr/bin/python3 ed_notifier.py config.json cache.json`
   - `/usr/bin/python3` should be the path to your Python 3 installation on your computer
   - `ed_notifier.py` should be the path to the Python script in this repository, which may need to be changed to an absolute path if the CWD is not the repository (e.g., running from `crontab`).

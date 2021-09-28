@@ -13,6 +13,13 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 SORT = "new"
 LIMIT = "50" # must be <= 100
 
+# ==================================== #
+# ======== SLACK NOTIF CONFIG ======== #
+# ==================================== #
+
+SLACK_MAX_TEXT_LENGTH = 3000
+SLACK_MAX_TEXT_MSG = "\n\n(...)"
+
 
 # Arg parser
 parser = argparse.ArgumentParser(description="Sends notifications for new Ed posts to Slack channel(s)")
@@ -31,104 +38,158 @@ with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
     config = json.load(json_file)
     ED_COURSE_ID = config['ed_course_id']
     ED_AUTH_TOKEN = config['ed_auth_token']
-    SLACK_WEBHOOK_URLS = config['slack_webhook_urls']
+    SLACK_AUTH_TOKEN = config['slack_auth_token']
+    CHANNEL_IDS = config['channel_ids']
 
 # Combine course ID and thread ID to get unique ID
 def get_unique_id(thread):
     return f"{ED_COURSE_ID}/{thread['id']}"
 
 # Read in cached data
+CACHE_EXISTS = True
 try:
     with open(CACHE_JSON_FILEPATH, 'r') as json_file:
         cache = json.load(json_file)
-        cached_thread_ids = set(cache['thread_ids'])
 except FileNotFoundError:
+    CACHE_EXISTS = False
     cache = {}
-    cached_thread_ids = set()
 
 # Read data from Ed
 REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads?sort={SORT}&limit={LIMIT}"
 REQUEST_HEADERS = {'x-token': ED_AUTH_TOKEN}
 response = requests.get(REQUEST_URL, headers=REQUEST_HEADERS)
 threads = response.json()['threads']
-new_threads = [thread for thread in threads if get_unique_id(thread) not in cached_thread_ids]
 
-# Sort new threads by thread number
-new_threads.sort(key=lambda thread: thread['number'])
+# Sort threads by number
+threads.sort(key=lambda thread: thread['number'])
 
-# Add new threads to cache set
-for thread in new_threads:
-    cached_thread_ids.add(get_unique_id(thread))
+def send_slack_react(cache, thread, slack_auth_token, reaction_name):
+    if get_unique_id(thread) not in cache.keys():
+        return False
+    cached_thread = cache[get_unique_id(thread)]
+    if not "ed_notifier" in cached_thread.keys():
+        return False
+    notif_msg = cached_thread['ed_notifier']['notif_msg']
+    if not notif_msg['ok']:
+        return False
 
-# Write updated cache set to cache json file
-new_cache = {
-    'thread_ids': sorted(cached_thread_ids)
-}
-with open(CACHE_JSON_FILEPATH, 'w') as json_file:
-    json.dump(new_cache, json_file)
+    slack_request_header = {
+        "Authorization": f"Bearer {slack_auth_token}",
+        "Content-Type": "application/json; charset=utf-8"
+    }
+    
+    # Use the original channel and timestamp of the notification message to react to it
+    slack_request_body = {
+        "channel": notif_msg['channel'],
+        "name": reaction_name,
+        "timestamp": notif_msg['ts']
+    }
+    response = requests.post(url="https://slack.com/api/reactions.add", headers=slack_request_header, json=slack_request_body)
+    return response.status_code == 200 and response.json()['ok']
 
-# Send slack notifs
-if len(cache) == 0:
-    print("Cache file was empty: successfully populated cache. No Slack notifications sent.")
-    sys.exit(0)
-
-for thread in new_threads:
+def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     formatted_title = f"(#{thread['number']}) {thread['title']}"
     author = "Anonymous" if thread['is_anonymous'] else thread['user']['name']
     post_text = thread['document'].strip()
+    if(len(post_text) > SLACK_MAX_TEXT_LENGTH):
+        post_text = post_text[0:SLACK_MAX_TEXT_LENGTH - len(SLACK_MAX_TEXT_MSG)] + SLACK_MAX_TEXT_MSG
     full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
     thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
 
-    slack_request_json = {
-        "text": formatted_title + ": " + post_text,
-        "blocks": [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": formatted_title,
-                    "emoji": True
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "plain_text",
-                    "text": post_text,
-                    "emoji": True
-                }
-            },
-            {
-                "type": "section",
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"🗂️ *Category:*\n{full_category}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"👤 *Posted by:*\n{author}"
+    for channel_id in channel_ids:
+        slack_request_header = {
+            "Authorization": f"Bearer {slack_auth_token}",
+            "Content-Type": "application/json; charset=utf-8"
+        }
+        slack_request_body = {
+            "channel": channel_id,
+            "text": formatted_title + ": " + post_text,
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": formatted_title,
+                        "emoji": True
                     }
-                ]
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "🔗 Open in Ed",
-                            "emoji": True
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "plain_text",
+                        "text": post_text,
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"🗂️ *Category:*\n{full_category}"
                         },
-                        "url": thread_url
-                    }
-                ]
-            }
-        ]
-    }
+                        {
+                            "type": "mrkdwn",
+                            "text": f"👤 *Posted by:*\n{author}"
+                        }
+                    ]
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🔗 Open in Ed",
+                                "emoji": True
+                            },
+                            "url": thread_url
+                        }
+                    ]
+                }
+            ]
+        }
 
-    for slack_webhook_url in SLACK_WEBHOOK_URLS:
-        r = requests.post(slack_webhook_url, json=slack_request_json)
-        if(r.status_code != 200):
-            print(f"Got status {r.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Webhook URL {slack_webhook_url}")
+        response = requests.post(url="https://slack.com/api/chat.postMessage", headers=slack_request_header, json=slack_request_body)
+        if response.status_code == 200:
+            cached_thread = cache[get_unique_id(thread)]
+            if("ed_notifier" not in cached_thread.keys()):
+                cached_thread['ed_notifier'] = {}
+            # only keep the following response data (to avoid keeping the entire original message sent to Slack in the json!)
+            cache_response_data = {}
+            cache_response_data['ok'] = response.json()['ok']
+            cache_response_data['channel'] = response.json()['channel']
+            cache_response_data['ts'] = response.json()['ts']
+            cached_thread['ed_notifier']['notif_msg'] = cache_response_data
+        else:
+            print(f"Got status {response.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Channel {channel_id}")
+
+def cache_thread(cache, thread):
+    cached_thread = cache[get_unique_id(thread)] if get_unique_id(thread) in cache.keys() else {}
+    cached_thread['id'] = thread['id']
+    cached_thread['number'] = thread['number']
+    cached_thread['is_answered'] = thread['is_answered']
+
+# Iterate through threads (sorted by number)
+for thread in threads:
+
+    # Add new threads to cache & send slack notif
+    if get_unique_id(thread) not in cache.keys():
+        cache_thread(cache, thread)
+        if CACHE_EXISTS:
+            send_slack_notif(cache, thread, SLACK_AUTH_TOKEN, CHANNEL_IDS)
+    
+    # Check old threads to see if "answered" status changed
+    else:
+        if thread['is_answered'] and not cache[get_unique_id(thread)]['is_answered']:
+            send_slack_react(cache, thread, SLACK_AUTH_TOKEN, "white_check_mark")
+        cache_thread(cache, thread)
+
+# Only send slack notifs if cache file exists already
+if not CACHE_EXISTS:
+    print("Cache file was empty: successfully populated cache. No Slack notifications sent.")
+
+# Update cache
+with open(CACHE_JSON_FILEPATH, 'w') as json_file:
+    json.dump(cache, json_file)
