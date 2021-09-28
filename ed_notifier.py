@@ -170,6 +170,7 @@ def cache_thread(cache, thread):
     cached_thread['id'] = thread['id']
     cached_thread['number'] = thread['number']
     cached_thread['is_answered'] = thread['is_answered']
+    cache[get_unique_id(thread)] = cached_thread
 
 # Iterate through threads (sorted by number)
 for thread in threads:
