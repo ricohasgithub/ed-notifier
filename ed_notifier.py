@@ -63,13 +63,7 @@ threads = response.json()['threads']
 # Sort threads by number
 threads.sort(key=lambda thread: thread['number'])
 
-def send_slack_react(cache, thread, slack_auth_token, reaction_name):
-    if get_unique_id(thread) not in cache.keys():
-        return False
-    cached_thread = cache[get_unique_id(thread)]
-    if not "ed_notifier" in cached_thread.keys():
-        return False
-    notif_msg = cached_thread['ed_notifier']['notif_msg']
+def send_slack_react(notif_msg, slack_auth_token, reaction_name):
     if not notif_msg['ok']:
         return False
 
@@ -96,6 +90,7 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
     thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
 
+    notif_msgs = []
     for channel_id in channel_ids:
         slack_request_header = {
             "Authorization": f"Bearer {slack_auth_token}",
@@ -161,9 +156,11 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
             cache_response_data['ok'] = response.json()['ok']
             cache_response_data['channel'] = response.json()['channel']
             cache_response_data['ts'] = response.json()['ts']
-            cached_thread['ed_notifier']['notif_msg'] = cache_response_data
+            notif_msgs.append(cache_response_data)
         else:
             print(f"Got status {response.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Channel {channel_id}")
+    
+    cached_thread['ed_notifier']['notif_msgs'] = notif_msgs
 
 def cache_thread(cache, thread):
     cached_thread = cache[get_unique_id(thread)] if get_unique_id(thread) in cache.keys() else {}
@@ -184,7 +181,12 @@ for thread in threads:
     # Check old threads to see if "answered" status changed
     else:
         if thread['is_answered'] and not cache[get_unique_id(thread)]['is_answered']:
-            send_slack_react(cache, thread, SLACK_AUTH_TOKEN, "white_check_mark")
+            cached_thread = cache[get_unique_id(thread)]
+            if "ed_notifier" not in cached_thread.keys() or "notif_msgs" not in cached_thread['ed_notifier'].keys():
+                continue
+            notif_msgs = cached_thread['ed_notifier']['notif_msgs']
+            for notif_msg in notif_msgs:
+                send_slack_react(notif_msg, SLACK_AUTH_TOKEN, "white_check_mark")
         cache_thread(cache, thread)
 
 # Only send slack notifs if cache file exists already
