@@ -11,7 +11,7 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 # ==================================== #
 
 SORT = "new"
-LIMIT = "50" # must be <= 100
+LIMIT = "70" # must be <= 100
 
 # ==================================== #
 # ======== SLACK NOTIF CONFIG ======== #
