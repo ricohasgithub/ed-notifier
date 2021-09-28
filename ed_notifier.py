@@ -54,14 +54,18 @@ except FileNotFoundError:
     CACHE_EXISTS = False
     cache = {}
 
-# Read data from Ed
-REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads?sort={SORT}&limit={LIMIT}"
+# Get all current threads from Ed - EXCLUDES deleted threads
+REQUEST_URL = f"https://us.edstem.org/api/courses/{ED_COURSE_ID}/threads"
 REQUEST_HEADERS = {'x-token': ED_AUTH_TOKEN}
-response = requests.get(REQUEST_URL, headers=REQUEST_HEADERS)
-threads = response.json()['threads']
+current_threads = requests.get(REQUEST_URL, headers=REQUEST_HEADERS, params={'sort': SORT, 'limit': LIMIT})
+threads = current_threads.json()['threads']
 
-# Sort threads by number
-threads.sort(key=lambda thread: thread['number'])
+# Get deleted threads from Ed and append to list of all threads
+deleted_threads = requests.get(REQUEST_URL, headers=REQUEST_HEADERS, params={'sort': SORT, 'limit': LIMIT, 'filter': 'deleted'})
+threads.extend(deleted_threads.json()['threads'])
+
+# Sort threads by number, reversed (descending)
+threads.sort(key=lambda thread: thread['number'], reverse=True)
 
 def send_slack_react(notif_msg, slack_auth_token, reaction_name):
     if not notif_msg['ok']:
@@ -162,14 +166,16 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     
     cached_thread['ed_notifier']['notif_msgs'] = notif_msgs
 
+# Modify this function to change what data is cached for each thread
 def cache_thread(cache, thread):
     cached_thread = cache[get_unique_id(thread)] if get_unique_id(thread) in cache.keys() else {}
     cached_thread['id'] = thread['id']
     cached_thread['number'] = thread['number']
     cached_thread['is_answered'] = thread['is_answered']
+    cached_thread['deleted_at'] = thread['deleted_at']
     cache[get_unique_id(thread)] = cached_thread
 
-# Iterate through threads (sorted by number)
+# Iterate through threads (sorted)
 for thread in threads:
 
     # Add new threads to cache & send slack notif
@@ -180,13 +186,20 @@ for thread in threads:
     
     # Check old threads to see if "answered" status changed
     else:
-        if thread['is_answered'] and not cache[get_unique_id(thread)]['is_answered']:
-            cached_thread = cache[get_unique_id(thread)]
-            if "ed_notifier" not in cached_thread.keys() or "notif_msgs" not in cached_thread['ed_notifier'].keys():
-                continue
+        cached_thread = cache[get_unique_id(thread)]
+        try:
             notif_msgs = cached_thread['ed_notifier']['notif_msgs']
+        except KeyError:
+            continue
+        
+        if (thread['is_answered']) and ("is_answered" in cache[get_unique_id(thread)].keys()) and (not cache[get_unique_id(thread)]['is_answered']):
             for notif_msg in notif_msgs:
                 send_slack_react(notif_msg, SLACK_AUTH_TOKEN, "white_check_mark")
+        
+        if (thread['deleted_at'] != None) and ("deleted_at" in cache[get_unique_id(thread)].keys()) and (cache[get_unique_id(thread)]['deleted_at'] == None):
+            for notif_msg in notif_msgs:
+                send_slack_react(notif_msg, SLACK_AUTH_TOKEN, "x")
+        
         cache_thread(cache, thread)
 
 # Only send slack notifs if cache file exists already
