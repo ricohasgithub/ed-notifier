@@ -11,7 +11,7 @@ SCRIPT_DIR = str(Path(__file__).parent.absolute())
 # ==================================== #
 
 SORT = "new"
-LIMIT = "70" # must be <= 100
+LIMIT = "30" # must be <= 100
 
 # ==================================== #
 # ======== SLACK NOTIF CONFIG ======== #
@@ -50,7 +50,9 @@ CACHE_EXISTS = True
 try:
     with open(CACHE_JSON_FILEPATH, 'r') as json_file:
         cache = json.load(json_file)
-except FileNotFoundError:
+        if len(cache) == 0:
+            raise ValueError
+except (FileNotFoundError, ValueError):
     CACHE_EXISTS = False
     cache = {}
 
@@ -64,10 +66,10 @@ threads = current_threads.json()['threads']
 deleted_threads = requests.get(REQUEST_URL, headers=REQUEST_HEADERS, params={'sort': SORT, 'limit': LIMIT, 'filter': 'deleted'})
 threads.extend(deleted_threads.json()['threads'])
 
-# Sort threads by number, reversed (descending)
-threads.sort(key=lambda thread: thread['number'], reverse=True)
+# Sort threads by number, ascending
+threads.sort(key=lambda thread: thread['number'])
 
-def send_slack_react(notif_msg, slack_auth_token, reaction_name):
+def set_slack_react(notif_msg, reaction_name, mode, slack_auth_token):
     if not notif_msg['ok']:
         return False
 
@@ -82,8 +84,39 @@ def send_slack_react(notif_msg, slack_auth_token, reaction_name):
         "name": reaction_name,
         "timestamp": notif_msg['ts']
     }
-    response = requests.post(url="https://slack.com/api/reactions.add", headers=slack_request_header, json=slack_request_body)
-    return response.status_code == 200 and response.json()['ok']
+    response = requests.post(url=f"https://slack.com/api/reactions.{mode}", headers=slack_request_header, json=slack_request_body)
+    return response
+
+def slack_react_if(conditions, reaction_name, cache, thread, slack_auth_token):
+    try:
+        cached_thread = cache[get_unique_id(thread)]
+        notif_msgs = cached_thread['ed_notifier']['notif_msgs']
+    except KeyError:
+        return
+    
+    all_conditions_satisfied = True
+    for attr, check in conditions.items():
+        if not check(thread[attr]):
+            all_conditions_satisfied = False
+    
+    if "reactions" not in cached_thread['ed_notifier'].keys():
+        cached_thread['ed_notifier']['reactions'] = []
+    new_conditions = set(cached_thread['ed_notifier']['reactions'])
+
+    for notif_msg in notif_msgs:
+        if all_conditions_satisfied ^ (reaction_name in cached_thread['ed_notifier']['reactions']):
+            if(all_conditions_satisfied):
+                response = set_slack_react(notif_msg, reaction_name, "add", slack_auth_token)
+                if(response.status_code == 200 and response.json()['ok']):
+                    new_conditions.add(reaction_name)
+            else:
+                response = set_slack_react(notif_msg, reaction_name, "remove", slack_auth_token)
+                if(response.status_code == 200 and response.json()['ok'] and reaction_name in new_conditions):
+                    new_conditions.remove(reaction_name)
+    
+    cached_thread['ed_notifier']['reactions'] = list(new_conditions)
+
+    return all_conditions_satisfied
 
 def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     formatted_title = f"(#{thread['number']}) {thread['title']}"
@@ -162,7 +195,9 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
             cache_response_data['ts'] = response.json()['ts']
             notif_msgs.append(cache_response_data)
         else:
+            cached_thread = cache[get_unique_id(thread)]
             print(f"Got status {response.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Channel {channel_id}")
+            sys.exit(1)
     
     cached_thread['ed_notifier']['notif_msgs'] = notif_msgs
 
@@ -173,6 +208,8 @@ def cache_thread(cache, thread):
     cached_thread['number'] = thread['number']
     cached_thread['is_answered'] = thread['is_answered']
     cached_thread['deleted_at'] = thread['deleted_at']
+    cached_thread['is_private'] = thread['is_private']
+    cached_thread['is_qa'] = thread['category'] == "LIVE Lecture Q&A"
     cache[get_unique_id(thread)] = cached_thread
 
 # Iterate through threads (sorted)
@@ -181,26 +218,35 @@ for thread in threads:
     # Add new threads to cache & send slack notif
     if get_unique_id(thread) not in cache.keys():
         cache_thread(cache, thread)
-        if CACHE_EXISTS:
+        if not CACHE_EXISTS:
+            continue
+        else:
             send_slack_notif(cache, thread, SLACK_AUTH_TOKEN, CHANNEL_IDS)
     
-    # Check old threads to see if "answered" status changed
-    else:
-        cached_thread = cache[get_unique_id(thread)]
-        try:
-            notif_msgs = cached_thread['ed_notifier']['notif_msgs']
-        except KeyError:
-            continue
-        
-        if (thread['is_answered']) and ("is_answered" in cache[get_unique_id(thread)].keys()) and (not cache[get_unique_id(thread)]['is_answered']):
-            for notif_msg in notif_msgs:
-                send_slack_react(notif_msg, SLACK_AUTH_TOKEN, "white_check_mark")
-        
-        if (thread['deleted_at'] != None) and ("deleted_at" in cache[get_unique_id(thread)].keys()) and (cache[get_unique_id(thread)]['deleted_at'] == None):
-            for notif_msg in notif_msgs:
-                send_slack_react(notif_msg, SLACK_AUTH_TOKEN, "x")
-        
-        cache_thread(cache, thread)
+    deleted = slack_react_if(
+        {
+            "deleted_at": (lambda attr: attr is not None)
+        },
+        "x",
+        cache, thread, SLACK_AUTH_TOKEN
+    )
+
+    slack_react_if(
+        {
+            "is_private": (lambda attr: not deleted and attr == True)
+        },
+        "lock",
+        cache, thread, SLACK_AUTH_TOKEN
+    )
+    slack_react_if(
+        {
+            "is_answered": (lambda attr: not deleted and attr == True),
+        },
+        "white_check_mark",
+        cache, thread, SLACK_AUTH_TOKEN
+    )
+    
+    cache_thread(cache, thread)
 
 # Only send slack notifs if cache file exists already
 if not CACHE_EXISTS:
