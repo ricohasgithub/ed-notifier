@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import argparse
 import sys
 import requests
@@ -37,9 +39,23 @@ if not Path(CONFIG_JSON_FILEPATH).is_file():
 with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
     config = json.load(json_file)
     ED_COURSE_ID = config['ed_course_id']
-    ED_AUTH_TOKEN = config['ed_auth_token']
+    TOKEN_JSON = config['token_json']
     SLACK_AUTH_TOKEN = config['slack_auth_token']
     CHANNEL_IDS = config['channel_ids']
+
+# Read auth token for this course from token json file
+TOKEN_JSON_FILEPATH = str(Path(TOKEN_JSON).absolute())
+if not Path(TOKEN_JSON_FILEPATH).is_file():
+    print(f"ERROR: token json file '{TOKEN_JSON_FILEPATH}' (specified in config json) not found")
+    sys.exit(1)
+else:
+    try:
+        with open(TOKEN_JSON_FILEPATH, 'r') as token_json_file:
+            token_json = json.load(token_json_file)
+            ED_AUTH_TOKEN = token_json[ED_COURSE_ID]
+    except KeyError:
+        print(f"ERROR: auth token for course {ED_COURSE_ID} not found in token json file ('{TOKEN_JSON_FILEPATH}')")
+        sys.exit(1)
 
 # Combine course ID and thread ID to get unique ID
 def get_unique_id(thread):
@@ -248,10 +264,10 @@ for thread in threads:
     
     cache_thread(cache, thread)
 
-# Only send slack notifs if cache file exists already
-if not CACHE_EXISTS:
-    print("Cache file was empty: successfully populated cache. No Slack notifications sent.")
-
 # Update cache
 with open(CACHE_JSON_FILEPATH, 'w') as json_file:
     json.dump(cache, json_file)
+
+# Only send slack notifs if cache file exists already
+if not CACHE_EXISTS:
+    print("Cache file was empty: successfully populated cache. No Slack notifications sent.")

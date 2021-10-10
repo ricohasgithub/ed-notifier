@@ -1,6 +1,6 @@
 {
     "ed_course_id": "0000",
-    "ed_auth_token": "YOUR_ED_AUTH_TOKEN_HERE",
+    "token_json": "YOUR_PATH_TO_ED_TOKEN_LISTENER_JSON_HERE",
     "slack_auth_token": "YOUR_SLACK_BOT_AUTH_TOKEN_HERE",
     "channel_ids": [
         "YOUR_SLACK_CHANNEL_IDS_HERE"
