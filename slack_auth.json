@@ -1,0 +1,4 @@
+{
+    "slack_client_id": "SLACK_APP_CLIENT_ID_HERE",
+    "slack_client_secret": "SLACK_APP_CLIENT_SECRET_HERE"
+}
