@@ -26,11 +26,14 @@ SLACK_MAX_TEXT_MSG = "\n\n(...)"
 # Arg parser
 parser = argparse.ArgumentParser(description="Sends notifications for new Ed posts to Slack channel(s)")
 parser.add_argument('config', nargs=1, type=str, help='path to config json containing Ed + Slack config')
+parser.add_argument('tokens', nargs=1, type=str, help='path to token json containing x-tokens for accessing Ed')
 parser.add_argument('cache', nargs=1, type=str, help='path to cache json for Ed posts')
 args = parser.parse_args()
 
-CACHE_JSON_FILEPATH = str(Path(args.cache[0]).absolute())
 CONFIG_JSON_FILEPATH = str(Path(args.config[0]).absolute())
+TOKEN_JSON_FILEPATH = str(Path(args.tokens[0]).absolute())
+CACHE_JSON_FILEPATH = str(Path(args.cache[0]).absolute())
+
 if not Path(CONFIG_JSON_FILEPATH).is_file():
     print(f"ERROR: passed config json file '{args.config[0]}' not found")
     sys.exit(1)
@@ -44,18 +47,16 @@ with open(CONFIG_JSON_FILEPATH, 'r') as json_file:
     CHANNEL_IDS = config['channel_ids']
 
 # Read auth token for this course from token json file
-TOKEN_JSON_FILEPATH = str(Path(TOKEN_JSON).absolute())
-if not Path(TOKEN_JSON_FILEPATH).is_file():
-    print(f"ERROR: token json file '{TOKEN_JSON_FILEPATH}' (specified in config json) not found")
+try:
+    with open(TOKEN_JSON_FILEPATH, 'r') as token_json_file:
+        token_json = json.load(token_json_file)
+        ED_AUTH_TOKEN = token_json[ED_COURSE_ID]
+except FileNotFoundError:
+    print(f"ERROR: token json file '{TOKEN_JSON_FILEPATH}' not found")
     sys.exit(1)
-else:
-    try:
-        with open(TOKEN_JSON_FILEPATH, 'r') as token_json_file:
-            token_json = json.load(token_json_file)
-            ED_AUTH_TOKEN = token_json[ED_COURSE_ID]
-    except KeyError:
-        print(f"ERROR: auth token for course {ED_COURSE_ID} not found in token json file ('{TOKEN_JSON_FILEPATH}')")
-        sys.exit(1)
+except KeyError:
+    print(f"ERROR: auth token for course {ED_COURSE_ID} not found in token json file ('{TOKEN_JSON_FILEPATH}')")
+    sys.exit(1)
 
 # Combine course ID and thread ID to get unique ID
 def get_unique_id(thread):
@@ -200,7 +201,7 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
         }
 
         response = requests.post(url="https://slack.com/api/chat.postMessage", headers=slack_request_header, json=slack_request_body)
-        if response.status_code == 200:
+        if response.json()['ok']:
             cached_thread = cache[get_unique_id(thread)]
             if("ed_notifier" not in cached_thread.keys()):
                 cached_thread['ed_notifier'] = {}
@@ -211,6 +212,7 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
             cache_response_data['ts'] = response.json()['ts']
             notif_msgs.append(cache_response_data)
         else:
+            print(response.json())
             cached_thread = cache[get_unique_id(thread)]
             print(f"Got status {response.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Channel {channel_id}")
             sys.exit(1)
