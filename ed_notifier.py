@@ -141,6 +141,8 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     post_text = thread['document'].strip()
     if(len(post_text) > SLACK_MAX_TEXT_LENGTH):
         post_text = post_text[0:SLACK_MAX_TEXT_LENGTH - len(SLACK_MAX_TEXT_MSG)] + SLACK_MAX_TEXT_MSG
+    if(len(post_text) == 0):
+        post_text = "{post body has no text}"
     full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
     thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
 
@@ -200,23 +202,25 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
             ]
         }
 
-        response = requests.post(url="https://slack.com/api/chat.postMessage", headers=slack_request_header, json=slack_request_body)
-        if response.json()['ok']:
-            cached_thread = cache[get_unique_id(thread)]
-            if("ed_notifier" not in cached_thread.keys()):
-                cached_thread['ed_notifier'] = {}
-            # only keep the following response data (to avoid keeping the entire original message sent to Slack in the json!)
-            cache_response_data = {}
-            cache_response_data['ok'] = response.json()['ok']
-            cache_response_data['channel'] = response.json()['channel']
-            cache_response_data['ts'] = response.json()['ts']
-            notif_msgs.append(cache_response_data)
-        else:
+        try:
+            response = requests.post(url="https://slack.com/api/chat.postMessage", headers=slack_request_header, json=slack_request_body)
+            if response.json()['ok']:
+                cached_thread = cache[get_unique_id(thread)]
+                # only keep the following response data (to avoid keeping the entire original message sent to Slack in the json!)
+                cache_response_data = {}
+                cache_response_data['ok'] = response.json()['ok']
+                cache_response_data['channel'] = response.json()['channel']
+                cache_response_data['ts'] = response.json()['ts']
+                notif_msgs.append(cache_response_data)
+            else:
+                raise RuntimeError()
+        except RuntimeError as e:
             print(response.json())
             cached_thread = cache[get_unique_id(thread)]
             print(f"Got status {response.status_code} when posting message for Post #{thread['number']} (ID {thread['id']}) to Slack Channel {channel_id}")
-            sys.exit(1)
     
+    if("ed_notifier" not in cached_thread.keys()):
+        cached_thread['ed_notifier'] = {}
     cached_thread['ed_notifier']['notif_msgs'] = notif_msgs
 
 # Modify this function to change what data is cached for each thread
