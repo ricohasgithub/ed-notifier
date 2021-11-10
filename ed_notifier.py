@@ -232,6 +232,7 @@ def cache_thread(cache, thread):
     cached_thread['deleted_at'] = thread['deleted_at']
     cached_thread['is_private'] = thread['is_private']
     cached_thread['is_qa'] = thread['category'] == "LIVE Lecture Q&A"
+    cached_thread['duplicate_id'] = thread['duplicate_id']
     cache[get_unique_id(thread)] = cached_thread
 
 # Iterate through threads (sorted)
@@ -265,6 +266,13 @@ for thread in threads:
             "is_answered": (lambda attr: not deleted and attr == True),
         },
         "white_check_mark",
+        cache, thread, SLACK_AUTH_TOKEN
+    )
+    slack_react_if(
+        {
+            "duplicate_id": (lambda attr: not deleted and attr is not None),
+        },
+        "repeat_one",
         cache, thread, SLACK_AUTH_TOKEN
     )
     
