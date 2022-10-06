@@ -5,6 +5,9 @@ import sys
 import requests
 import json
 from pathlib import Path
+
+from slack_sdk import WebClient
+
 SCRIPT_DIR = str(Path(__file__).parent.absolute())
 
 
@@ -86,6 +89,9 @@ threads.extend(deleted_threads.json()['threads'])
 # Sort threads by number, ascending
 threads.sort(key=lambda thread: thread['number'])
 
+# New slack bot api w/ web client
+client = WebClient(token=SLACK_AUTH_TOKEN)
+
 def set_slack_react(notif_msg, reaction_name, mode, slack_auth_token):
     if not notif_msg['ok']:
         return False
@@ -146,6 +152,8 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
     full_category = thread['category'] + (f": {thread['subcategory']}" if thread['subcategory'] else "")
     thread_url = f"https://edstem.org/us/courses/{thread['course_id']}/discussion/{thread['id']}"
 
+    print(thread_url)
+
     notif_msgs = []
     for channel_id in channel_ids:
         slack_request_header = {
@@ -203,6 +211,10 @@ def send_slack_notif(cache, thread, slack_auth_token, channel_ids):
         }
 
         try:
+            # response = client.chat_postMessage(
+            #     channel = channel_id,
+            #     text = formatted_title + ": " + post_text,
+            # )
             response = requests.post(url="https://slack.com/api/chat.postMessage", headers=slack_request_header, json=slack_request_body)
             if response.json()['ok']:
                 cached_thread = cache[get_unique_id(thread)]
