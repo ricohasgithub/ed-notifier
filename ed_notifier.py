@@ -6,7 +6,7 @@ import requests
 import json
 from pathlib import Path
 
-from slack_sdk import WebClient
+# from slack_sdk import WebClient
 
 SCRIPT_DIR = str(Path(__file__).parent.absolute())
 
@@ -90,7 +90,7 @@ threads.extend(deleted_threads.json()['threads'])
 threads.sort(key=lambda thread: thread['number'])
 
 # New slack bot api w/ web client
-client = WebClient(token=SLACK_AUTH_TOKEN)
+# client = WebClient(token=SLACK_AUTH_TOKEN)
 
 def set_slack_react(notif_msg, reaction_name, mode, slack_auth_token):
     if not notif_msg['ok']:
